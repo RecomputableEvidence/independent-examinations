@@ -4,16 +4,19 @@ import copy
 import contextlib
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 from check_model_participation import (  # noqa: E402
-    ParticipationError, declaration_digest_sha256, load_record, main,
+    MAX_BYTES, ParticipationError, declaration_digest_sha256, load_record, main,
     screen_participation, validate_participation,
 )
 
@@ -34,7 +37,7 @@ class ParticipationTests(unittest.TestCase):
         self.assertEqual(result["declared_decision_status"], "WITHHOLD")
         self.assertEqual(result["identity_evidence_ref"], example()["model_identity"]["evidence_ref"])
         self.assertEqual(result["schema_version"], "0.1")
-        self.assertEqual(result["checker_version"], "MPI_SCREEN_0.1.2")
+        self.assertEqual(result["checker_version"], "MPI_SCREEN_0.1.3")
         self.assertEqual(result["declaration_digest_sha256"], declaration_digest_sha256(example()))
         self.assertEqual(result["declaration_digest_sha256"], "701326610d0fbbb592e952cf13435b006c42cbe59fe124d717189b7c390729f3")
 
@@ -307,6 +310,55 @@ class ParticipationTests(unittest.TestCase):
         rec["schema_version"] = "0.2"
         with self.assertRaises(ParticipationError):
             validate_participation(rec)
+
+    def test_direct_call_rejects_non_json_version_even_with_custom_equality(self):
+        class VersionImpostor:
+            def __eq__(self, other):
+                return other == "0.1"
+
+        rec = example()
+        rec["schema_version"] = VersionImpostor()
+        for entrypoint in (validate_participation, screen_participation):
+            with self.subTest(entrypoint=entrypoint.__name__):
+                with self.assertRaisesRegex(ParticipationError, "schema version"):
+                    entrypoint(rec)
+
+    def test_regular_file_byte_limit_exact_and_one_over(self):
+        encoded = json.dumps(example()).encode("utf-8")
+        self.assertLess(len(encoded), MAX_BYTES)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "record.json"
+            path.write_bytes(encoded + b" " * (MAX_BYTES - len(encoded)))
+            self.assertEqual(load_record(path), example())
+            path.write_bytes(encoded + b" " * (MAX_BYTES + 1 - len(encoded)))
+            with self.assertRaisesRegex(ParticipationError, "byte limit"):
+                load_record(path)
+
+    def test_bounded_read_even_when_preopen_stat_size_is_wrong(self):
+        encoded = json.dumps(example()).encode("utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "record.json"
+            path.write_bytes(encoded + b" " * (MAX_BYTES + 1 - len(encoded)))
+            real_mode = path.stat().st_mode
+            with mock.patch.object(Path, "stat",
+                                   return_value=SimpleNamespace(st_mode=real_mode, st_size=0)):
+                with self.assertRaisesRegex(ParticipationError, "byte limit"):
+                    load_record(path)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "POSIX FIFO not supported")
+    def test_fifo_rejected_without_opening_reader(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "record.fifo"
+            os.mkfifo(path)
+            with self.assertRaisesRegex(ParticipationError, "regular file"):
+                load_record(path)
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "tools" / "check_model_participation.py"), str(path)],
+                capture_output=True, text=True, timeout=5,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("regular file", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
 
     def test_copy_does_not_change_original(self):
         base = example()
