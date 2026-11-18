@@ -18,7 +18,7 @@ import sys
 
 MAX_BYTES = 250_000
 MAX_JSON_DEPTH = 64
-CHECKER_VERSION = "MPI_SCREEN_0.1.1"
+CHECKER_VERSION = "MPI_SCREEN_0.1.2"
 DIGEST_PROFILE = "SORTED_SCHEMA_CONSTRAINED_JSON_UTF8_V1"
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 TOP_KEYS = {"schema_version", "experiment_id", "subject_sha256", "case_id", "arm", "run_id", "model_identity", "informedness", "decision"}
@@ -38,7 +38,9 @@ class ParticipationError(ValueError):
 
 
 def nonempty(value, limit=512):
-    return type(value) is str and bool(value.strip()) and len(value) <= limit
+    """Require bounded nonblank Unicode scalar text for UTF-8 digest safety."""
+    return (type(value) is str and bool(value.strip()) and len(value) <= limit
+            and not any(0xD800 <= ord(char) <= 0xDFFF for char in value))
 
 
 def canonical_identity_token(value):
@@ -196,13 +198,18 @@ def _pairs_no_duplicates(pairs):
     d = {}
     for k, v in pairs:
         if k in d:
-            raise ParticipationError(f"duplicate JSON field: {k}")
+            raise ParticipationError(f"duplicate JSON field: {k!r}")
         d[k] = v
     return d
 
 
 def _reject_constant(value):
     raise ParticipationError(f"non-JSON numeric constant: {value}")
+
+
+def _reject_number(value):
+    """No numeric fields exist; reject tokens before integer/float conversion."""
+    raise ParticipationError("JSON numbers are not valid participation fields")
 
 
 def _check_json_depth(raw):
@@ -240,7 +247,9 @@ def load_record(path):
         _check_json_depth(raw)
         record = json.loads(raw,
                             object_pairs_hook=_pairs_no_duplicates,
-                            parse_constant=_reject_constant)
+                            parse_constant=_reject_constant,
+                            parse_int=_reject_number,
+                            parse_float=_reject_number)
     except (OSError, UnicodeError, json.JSONDecodeError, RecursionError) as exc:
         raise ParticipationError(f"cannot load declaration: {exc}") from exc
     return validate_participation(record)

@@ -5,6 +5,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -33,8 +34,9 @@ class ParticipationTests(unittest.TestCase):
         self.assertEqual(result["declared_decision_status"], "WITHHOLD")
         self.assertEqual(result["identity_evidence_ref"], example()["model_identity"]["evidence_ref"])
         self.assertEqual(result["schema_version"], "0.1")
-        self.assertEqual(result["checker_version"], "MPI_SCREEN_0.1.1")
+        self.assertEqual(result["checker_version"], "MPI_SCREEN_0.1.2")
         self.assertEqual(result["declaration_digest_sha256"], declaration_digest_sha256(example()))
+        self.assertEqual(result["declaration_digest_sha256"], "701326610d0fbbb592e952cf13435b006c42cbe59fe124d717189b7c390729f3")
 
     def test_continuation_eligible_only_for_further_review(self):
         rec = example()
@@ -191,6 +193,82 @@ class ParticipationTests(unittest.TestCase):
         self.assertNotEqual(first, second)
         self.assertEqual(declaration_digest_sha256(json.loads(first)), declaration_digest_sha256(json.loads(second)))
 
+    def test_unpaired_surrogates_rejected_at_direct_screen_boundary(self):
+        for surrogate in ("\ud800", "\udfff"):
+            for location in ("basis_summary", "identity_ref", "material_gap", "decisive_link", "run_id"):
+                with self.subTest(surrogate=repr(surrogate), location=location):
+                    rec = example()
+                    if location == "basis_summary":
+                        rec["decision"]["basis_summary"] = surrogate
+                    elif location == "identity_ref":
+                        rec["model_identity"]["evidence_ref"] = "synthetic:" + surrogate
+                    elif location == "material_gap":
+                        rec["informedness"]["material_gaps"] = ["unresolved " + surrogate]
+                    elif location == "decisive_link":
+                        rec["decision"]["decisive_links"][0]["why_material"] += surrogate
+                    else:
+                        rec["run_id"] += surrogate
+                    with self.assertRaises(ParticipationError):
+                        screen_participation(rec)
+
+    def test_unpaired_surrogate_json_escapes_controlled_cli_failure(self):
+        for surrogate in ("\ud800", "\udfff"):
+            for location in ("basis_summary", "material_gap"):
+                with self.subTest(surrogate=repr(surrogate), location=location):
+                    rec = example()
+                    if location == "basis_summary":
+                        rec["decision"]["basis_summary"] = surrogate
+                    else:
+                        rec["informedness"]["material_gaps"] = ["missing " + surrogate]
+                    with tempfile.TemporaryDirectory() as tmp:
+                        path = Path(tmp) / "surrogate.json"
+                        path.write_text(json.dumps(rec, ensure_ascii=True), encoding="utf-8")
+                        result = subprocess.run([sys.executable, str(ROOT / "tools" / "check_model_participation.py"), str(path)],
+                                                capture_output=True, text=True, timeout=5)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn("INVALID_MODEL_PARTICIPATION_RECORD", result.stderr)
+                    self.assertNotIn("Traceback", result.stderr)
+                    self.assertEqual(result.stdout, "")
+
+    def test_unicode_scalar_and_decoded_surrogate_pair_preserve_digest(self):
+        rec = example()
+        rec["decision"]["basis_summary"] += " \U0001f600"
+        rec["decision"]["decisive_links"][0]["why_material"] += " \U0001f642"
+        expected = declaration_digest_sha256(rec)
+        for use_ascii_escapes in (False, True):
+            with self.subTest(use_ascii_escapes=use_ascii_escapes):
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "supplementary.json"
+                    path.write_text(json.dumps(rec, ensure_ascii=use_ascii_escapes), encoding="utf-8")
+                    parsed = load_record(path)
+                    report = screen_participation(parsed)
+                self.assertEqual(report["disposition"], "FORMAL_SCREEN_PASS_PENDING_INDEPENDENT_REVIEW")
+                self.assertEqual(report["declaration_digest_sha256"], expected)
+                self.assertFalse(report["qualified_for_scored_examination"])
+
+    def test_numbers_are_rejected_before_json_numeric_conversion(self):
+        for token in ("0", "-12", "1.25", "1e309", "9" * 5000):
+            with self.subTest(token=token[:18]):
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "numeric.json"
+                    path.write_text('{"unexpected":' + token + '}', encoding="utf-8")
+                    result = subprocess.run([sys.executable, str(ROOT / "tools" / "check_model_participation.py"), str(path)],
+                                            capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("JSON numbers are not valid", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertEqual(result.stdout, "")
+
+    def test_duplicate_json_keys_with_unpaired_surrogate_is_controlled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "duplicate.json"
+            path.write_text('{"\\ud800":"first","\\ud800":"second"}', encoding="utf-8")
+            result = subprocess.run([sys.executable, str(ROOT / "tools" / "check_model_participation.py"), str(path)],
+                                    capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("duplicate JSON field", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_json_brackets_inside_strings_do_not_count_as_nesting(self):
         rec = example()
         rec["decision"]["basis_summary"] = "[" * 500
@@ -213,7 +291,7 @@ class ParticipationTests(unittest.TestCase):
     def test_duplicate_json_keys_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "sample.json"
-            path.write_text('{"same":1,"same":2}', encoding="utf-8")
+            path.write_text('{"same":"first","same":"second"}', encoding="utf-8")
             with self.assertRaises(ParticipationError):
                 load_record(path)
 

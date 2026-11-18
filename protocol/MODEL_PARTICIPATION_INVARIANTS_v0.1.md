@@ -26,20 +26,20 @@ For definitive `CONTINUE`, `WITHHOLD`, or `STOP` claims, `counterevidence_or_lim
 
 ## Two-stage participation disposition
 
-1. **Formal screen:** `tools/check_model_participation.py` validates record structure and the minimum MPI-01/MPI-02 declarations. It may report `FORMAL_SCREEN_PASS_PENDING_INDEPENDENT_REVIEW`, `ABSTENTION_RETAINED_NOT_SCORED`, or `NOT_ELIGIBLE`. These are *screening* outcomes only.
+1. **Formal screen:** `tools/check_model_participation.py` validates record structure and the minimum MPI-01/MPI-02 declarations. It may report `FORMAL_SCREEN_PASS_PENDING_INDEPENDENT_REVIEW`, `ABSTENTION_RETAINED_NOT_SCORED`, or `NOT_ELIGIBLE_FOR_SCORED_EXAMINATION`. These are *screening* outcomes only.
 2. **Independent examination:** a distinct examiner resolves model identity against provider/executor metadata, checks exact run and source binding, verifies actual evidence access, considers uncertainty and conflicts, and selects independent cases to challenge whether the model's stated support path predicts its decisions. Only a separately published adjudication may designate the submission eligible for the scored cohort.
 
 Neither stage grants workflow execution permission, source sealing, external issuer status, operational admission, or comparative superiority. Passing the first stage must **never** automatically set `qualified_for_scored_examination = true`.
 
 **Abstention retention means archival visibility, not a claim of honesty or invariant satisfaction.** Publish abstention counts and their reasons separately from scored accuracy so selective abstention remains visible. Structurally invalid abstentions remain invalid records.
 
-## Report binding and controlled parsing (screen revision 0.1.1)
+## Report binding and controlled parsing (screen revision 0.1.2)
 
 A formal screen report must repeat `experiment_id`, `case_id`, `arm`, `run_id`, `subject_sha256`, `schema_version`, declared `decision.status`, and the declared `model_identity.evidence_ref`. It must carry the screen implementation version and a digest of the **entire parsed declaration**. Different decisions or claimed evidence bindings cannot share an identical complete report without a cryptographic collision.
 
-`SORTED_SCHEMA_CONSTRAINED_JSON_UTF8_V1` specifies SHA-256 over UTF-8 bytes produced from the validated parsed record using Python-compatible JSON: `json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)`. The allowed schema has strings, arrays, objects, and null, without JSON numeric fields. This is a defined hash representation **not a SHA-256 of the original JSON file bytes** and not a provider signature. Preserve the exact original record bytes and its separately computed byte digest for historical custody; no original-file hash is claimed here. Independently verify any external pointer and run provenance.
+`SORTED_SCHEMA_CONSTRAINED_JSON_UTF8_V1` specifies SHA-256 over UTF-8 bytes produced from the validated parsed record using Python-compatible JSON: `json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)`. The allowed schema has strings, arrays, objects, and null, without JSON numeric fields. Every accepted string must contain Unicode scalar values only: unpaired UTF-16 surrogate code points U+D800–U+DFFF are invalid, including when represented as JSON `\u` escapes. Correctly decoded surrogate *pairs* represent valid supplementary characters and remain permitted. JSON numeric tokens are rejected by the decoder before conversion, including oversized integer tokens; no numeric fields exist in the declaration schema. These restrictions complete the defined digest input domain without changing its existing representation or digest values for valid records. This is a defined hash representation **not a SHA-256 of the original JSON file bytes** and not a provider signature. Preserve the exact original record bytes and its separately computed byte digest for historical custody; no original-file hash is claimed here. Independently verify any external pointer and run provenance.
 
-The standard-library checker rejects JSON nesting deeper than 64 structural levels before decoding, with a 250,000-byte input cap and controlled errors for malformed JSON. These are bounded parsing controls, not a general resource-exhaustion or security qualification.
+The standard-library checker rejects JSON nesting deeper than 64 structural levels before decoding, with a 250,000-byte input cap and controlled errors for malformed JSON, lone surrogate values, and JSON numeric tokens. The public direct-call screen validates accepted string values before computing their UTF-8 digest. These are bounded parsing controls, not a general resource-exhaustion or security qualification.
 
 ## Minimum declaration coordinates
 

@@ -23,6 +23,8 @@ These are necessary conditions for consideration, not self-certification. Model 
 
 Following independent adverse review, the screen revision `MPI_SCREEN_0.1.1` rejects padded/unavailable identity variants, requires explicit limitations for definitive decisions, binds its report to a defined parsed-declaration digest, and handles excessively nested JSON as a controlled invalid record. This amendment is documented in [the review-response ledger](findings/MPI_PR2_REVIEW_RESPONSE_001.md); the original PR-head commit remains in Git history.
 
+The subsequent candidate `MPI_SCREEN_0.1.2` rejects unpaired Unicode surrogates before UTF-8 digest encoding, rejects JSON numbers before numeric conversion, and uses the exact ineligible disposition wire value in the protocol. Its repair account is [review-response ledger 002](findings/MPI_PR2_REVIEW_RESPONSE_002.md). Both preceding commits and independent findings are preserved; independent acceptance remains pending.
+
 ## First registered research candidate
 
 [NGAST-RELATIONAL-CONTINUANCE-COMP-004](experiments/NGAST-RELATIONAL-CONTINUANCE-COMP-004/PREREGISTRATION.md) proposes two **separately examined** work packages:
