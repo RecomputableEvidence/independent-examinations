@@ -1,0 +1,38 @@
+{
+  "schema_version": "0.1",
+  "experiment_id": "SYNTHETIC-MODEL-GATE-001",
+  "subject_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "case_id": "C01",
+  "arm": "D",
+  "run_id": "synthetic-run-001",
+  "model_identity": {
+    "provider": "example-provider",
+    "model_id": "example-model-v1",
+    "version": null,
+    "basis": "EXECUTOR_METADATA",
+    "evidence_ref": "synthetic:execution-metadata-001"
+  },
+  "informedness": {
+    "task_scope": "Decide whether the supplied synthetic grant supports the specified continuation",
+    "ability": "READY",
+    "evidence_access": "SUFFICIENT",
+    "material_gaps": [],
+    "basis": "The governing synthetic rule, grant, and case evidence are available for inspection"
+  },
+  "decision": {
+    "status": "WITHHOLD",
+    "ownership": "OWN_ASSESSMENT",
+    "basis_summary": "I withhold continuance because the registered rule requires a grant whose declared validity covers this case",
+    "governing_rule_refs": ["synthetic:contract/rule-validity"],
+    "evidence_refs": ["synthetic:case/grant-validity"],
+    "decisive_links": [
+      {
+        "rule_ref": "synthetic:contract/rule-validity",
+        "evidence_ref": "synthetic:case/grant-validity",
+        "why_material": "The declared grant expiry precedes the continuation decision time"
+      }
+    ],
+    "counterevidence_or_limits": ["The example has no independently authenticated issuer"],
+    "change_condition": "A newly authenticated grant covering the decision time would require reassessment"
+  }
+}
