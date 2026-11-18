@@ -14,11 +14,12 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import stat
 import sys
 
 MAX_BYTES = 250_000
 MAX_JSON_DEPTH = 64
-CHECKER_VERSION = "MPI_SCREEN_0.1.2"
+CHECKER_VERSION = "MPI_SCREEN_0.1.3"
 DIGEST_PROFILE = "SORTED_SCHEMA_CONSTRAINED_JSON_UTF8_V1"
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 TOP_KEYS = {"schema_version", "experiment_id", "subject_sha256", "case_id", "arm", "run_id", "model_identity", "informedness", "decision"}
@@ -78,7 +79,7 @@ def list_of_text(value, label):
 def validate_participation(data):
     """Always called from the public screen boundary, including direct calls."""
     exact_keys(data, TOP_KEYS, "participation")
-    if data["schema_version"] != "0.1":
+    if type(data["schema_version"]) is not str or data["schema_version"] != "0.1":
         raise ParticipationError("unsupported participation schema version")
     for key in ("experiment_id", "case_id", "arm", "run_id"):
         if not nonempty(data[key], 128):
@@ -240,10 +241,19 @@ def _check_json_depth(raw):
 
 def load_record(path):
     path = Path(path)
-    if path.stat().st_size > MAX_BYTES:
-        raise ParticipationError("declaration exceeds byte limit")
     try:
-        raw = path.read_text(encoding="utf-8")
+        # The size returned by stat is advisory, not a bound on the read.
+        # Refuse special files before opening to avoid ordinary FIFO blocking.
+        preopen = path.stat()
+        if not stat.S_ISREG(preopen.st_mode):
+            raise ParticipationError("declaration must be a regular file")
+        if preopen.st_size > MAX_BYTES:
+            raise ParticipationError("declaration exceeds byte limit")
+        with path.open("rb") as stream:
+            payload = stream.read(MAX_BYTES + 1)
+        if len(payload) > MAX_BYTES:
+            raise ParticipationError("declaration exceeds byte limit")
+        raw = payload.decode("utf-8")
         _check_json_depth(raw)
         record = json.loads(raw,
                             object_pairs_hook=_pairs_no_duplicates,
