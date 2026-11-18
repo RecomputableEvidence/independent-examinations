@@ -12,6 +12,19 @@ The examined system does not set its own success criteria. Favorable, adverse, d
 
 Read [CHARTER.md](CHARTER.md), [CLAIM_BOUNDARIES.md](CLAIM_BOUNDARIES.md), and the [examination protocol](protocol/EXAMINATION_CONTRACT_v0.1.md) before contributing.
 
+## Two model-participation invariants
+
+An AI model seeking to contribute a scored judgment must satisfy both [model-participation invariants](protocol/MODEL_PARTICIPATION_INVARIANTS_v0.1.md):
+
+1. **MPI-01 — Identity and informedness:** declare the exact model identity where actually known, identify the source of that claim, and disclose whether the model has adequate evidence and competence for this specific governed decision. Unknown identity or insufficient knowledge must remain visible; abstention is valid.
+2. **MPI-02 — Decision ownership and evidence path:** make an original, evidence-linked decision with a concise account of governing rules, decisive support, uncertainty, and what would change the result. Do not merely reproduce a favored or expected answer. **Private chain-of-thought or proprietary internal reasoning is never required.**
+
+These are necessary conditions for consideration, not self-certification. Model declarations and references alone do not authenticate a provider/model, establish informedness, or qualify an outcome. The [screening tool](tools/check_model_participation.py) checks completeness and internal consistency; **an independent examiner must authenticate and adjudicate the claims before scored admission**.
+
+Following independent adverse review, the screen revision `MPI_SCREEN_0.1.1` rejects padded/unavailable identity variants, requires explicit limitations for definitive decisions, binds its report to a defined parsed-declaration digest, and handles excessively nested JSON as a controlled invalid record. This amendment is documented in [the review-response ledger](findings/MPI_PR2_REVIEW_RESPONSE_001.md); the original PR-head commit remains in Git history.
+
+The subsequent candidate `MPI_SCREEN_0.1.2` rejects unpaired Unicode surrogates before UTF-8 digest encoding, rejects JSON numbers before numeric conversion, and uses the exact ineligible disposition wire value in the protocol. Its repair account is [review-response ledger 002](findings/MPI_PR2_REVIEW_RESPONSE_002.md). Both preceding commits and independent findings are preserved; independent acceptance remains pending.
+
 ## First registered research candidate
 
 [NGAST-RELATIONAL-CONTINUANCE-COMP-004](experiments/NGAST-RELATIONAL-CONTINUANCE-COMP-004/PREREGISTRATION.md) proposes two **separately examined** work packages:
@@ -30,6 +43,7 @@ Requirements: Python 3.10+ standard library only.
 ```bash
 python3 -m unittest discover -s tests -v
 python3 tools/compare_receipts.py examples/left.json examples/right.json
+python3 tools/check_model_participation.py examples/model_participation_ready.json
 ```
 
 The second command deliberately reports discrepancies. An ordinary result with discrepancies is **not** an unsuccessful tool invocation; suppressing disagreements would defeat the purpose.

@@ -11,6 +11,10 @@ Contributions should improve the reliability or discriminatory power of the exam
 5. Supply per-case, per-arm, per-implementation receipts with status, reason, **and exception** outcomes. Distinguish registered challenges from post-freeze exploration.
 6. Publish failure cases, exceptions, conflicting reviews, and null results. Adjudicate conflicts transparently; do not edit historical receipts.
 
+### AI model participation
+
+Before a model's judgment can be considered for a scored examination, attach the versioned [MPI-01/MPI-02 declaration](protocol/MODEL_PARTICIPATION_INVARIANTS_v0.1.md). Identify the precise model and the source of that identification; state competence and evidence access for the governed question; provide a concise, independently inspectable decision basis and express whether it is the model's own judgment. Unknown model identity, missing evidence, unsupported certainty, and abstentions must remain in the public record. Do not ask for hidden reasoning traces. The declaration requires independent identity/evidence review before qualification, even when its structure passes screening.
+
 ## Public safety / data rules
 
 - Synthetic examples only until public-disclosure rights are verified; do not upload private repositories, sensitive case evidence, personal data, or credentials.

@@ -9,6 +9,7 @@
 | COMP-004 R1 | **PROPOSED / NOT_RUN.** | Any defect has been fixed or re-examined. |
 | COMP-004 R2 | **CONTRACT PROPOSED / NOT_RUN.** | Externally authenticated actor/grant/evidence or operational effect. |
 | Real issuer authority | **UNVERIFIED.** | Source seal, grant, transfer, integration, or deployment permission. |
+| MPI-01/MPI-02 screening | A model's identity, task-readiness, and decision-account declarations satisfy or fail a specified formal screen. | A self-declared model ID is authenticated, self-confidence is calibrated, cited evidence is true, or a model is independently qualified. |
 
 **Overall:** `PUBLIC_INFRASTRUCTURE_DRAFT / COMPARATIVE_EFFECTIVENESS_NOT_ESTABLISHED / EXTERNAL_AUTHORITY_UNVERIFIED / OPERATIONAL_ADMISSION_WITHHELD`.
 

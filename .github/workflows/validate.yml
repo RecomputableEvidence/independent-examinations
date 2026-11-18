@@ -19,6 +19,8 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: Demonstrate neutral comparator
         run: python3 tools/compare_receipts.py examples/left.json examples/right.json
+      - name: Screen synthetic model participation declaration
+        run: python3 tools/check_model_participation.py examples/model_participation_ready.json
 
 # This workflow checks infrastructure only; it does not certify examinations,
 # execute untrusted candidate binaries, or grant any operational permission.
