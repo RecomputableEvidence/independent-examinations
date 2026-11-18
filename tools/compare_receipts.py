@@ -13,6 +13,7 @@ import re
 import sys
 
 MAX_INPUT_BYTES = 8_000_000
+MAX_JSON_DEPTH = 64
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 STATUSES = {"CONTINUE", "WITHHOLD", "STOP", "UNRESOLVED", "EXCEPTION"}
 COHORTS = {"registered", "exploratory", "holdout_revealed"}
@@ -32,7 +33,7 @@ def reject_duplicate_keys(pairs):
     result = {}
     for key, value in pairs:
         if key in result:
-            raise ReceiptError(f"duplicate JSON key: {key}")
+            raise ReceiptError(f"duplicate JSON key: {key!r}")
         result[key] = value
     return result
 
@@ -41,15 +42,54 @@ def reject_json_constant(value):
     raise ReceiptError(f"non-JSON number constant: {value}")
 
 
+def reject_json_number(value):
+    """No numeric fields exist in the receipt schema."""
+    raise ReceiptError("JSON number not permitted in receipt")
+
+
+def check_json_depth(raw):
+    """Bound structural nesting before decoding, ignoring brackets in strings."""
+    level = 0
+    in_string = False
+    escaped = False
+    for char in raw:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char in "{[":
+            level += 1
+            if level > MAX_JSON_DEPTH:
+                raise ReceiptError("JSON nesting depth exceeds limit")
+        elif char in "}]":
+            level -= 1
+            if level < 0:
+                raise ReceiptError("unbalanced JSON nesting")
+
+
 def load_receipt(path):
     path = Path(path)
-    if path.stat().st_size > MAX_INPUT_BYTES:
-        raise ReceiptError(f"receipt too large: {path}")
     try:
-        obj = json.loads(path.read_text(encoding="utf-8"),
+        # One bounded read from one open handle; no stat/read time-of-check gap.
+        with path.open("rb") as source:
+            raw_bytes = source.read(MAX_INPUT_BYTES + 1)
+        if len(raw_bytes) > MAX_INPUT_BYTES:
+            raise ReceiptError(f"receipt too large: {path}")
+        raw = raw_bytes.decode("utf-8")
+        check_json_depth(raw)
+        obj = json.loads(raw,
                          object_pairs_hook=reject_duplicate_keys,
-                         parse_constant=reject_json_constant)
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                         parse_constant=reject_json_constant,
+                         parse_int=reject_json_number,
+                         parse_float=reject_json_number)
+    except ReceiptError:
+        raise
+    except (OSError, UnicodeError, json.JSONDecodeError, RecursionError, ValueError) as exc:
         raise ReceiptError(f"cannot read valid JSON receipt {path}: {exc}") from exc
     validate_receipt(obj)
     return obj
@@ -91,8 +131,42 @@ def validate_receipt(obj):
         observed.add(key)
 
 
+def comparison_dimensions(a, b):
+    """Independent descriptive axes, with None for unavailable comparisons."""
+    left_exception = None if a is None else a["status"] == "EXCEPTION"
+    right_exception = None if b is None else b["status"] == "EXCEPTION"
+    dims = {
+        "cohort_equal": None,
+        "status_equal": None,
+        "reason_equal": None,
+        "exception_equal": None,
+        "left_has_exception": left_exception,
+        "right_has_exception": right_exception,
+        "continuation_relation": None,
+    }
+    if a is None or b is None:
+        return dims
+    dims["cohort_equal"] = a["cohort"] == b["cohort"]
+    dims["status_equal"] = a["status"] == b["status"]
+    if left_exception and right_exception:
+        dims["exception_equal"] = a["exception"] == b["exception"]
+    if not (left_exception or right_exception):
+        dims["reason_equal"] = a["reason"] == b["reason"]
+        lc, rc = a["status"] == "CONTINUE", b["status"] == "CONTINUE"
+        dims["continuation_relation"] = (
+            "BOTH_CONTINUE" if lc and rc else
+            "LEFT_ONLY_CONTINUE" if lc else
+            "RIGHT_ONLY_CONTINUE" if rc else
+            "NEITHER_CONTINUE"
+        )
+    return dims
+
+
 def compare(left, right):
     """Descriptive comparison; left and right have *no* oracle authority."""
+    # Also validate direct library callers: dictionaries must not overwrite rows.
+    validate_receipt(left)
+    validate_receipt(right)
     for key in ("experiment_id", "subject_sha256"):
         if left[key] != right[key]:
             raise ReceiptError(f"incomparable {key}")
@@ -100,6 +174,10 @@ def compare(left, right):
     rmap = {(r["case_id"], r["arm"]): r for r in right["results"]}
     counts = Counter()
     details = []
+    per_key_dimensions = []
+    dimension_totals = {key: Counter() for key in (
+        "cohort_equal", "status_equal", "reason_equal", "exception_equal",
+        "left_has_exception", "right_has_exception", "continuation_relation")}
     for case_id, arm in sorted(set(lmap) | set(rmap)):
         a = lmap.get((case_id, arm))
         b = rmap.get((case_id, arm))
@@ -122,6 +200,14 @@ def compare(left, right):
         else:
             kind = "decision_disagreement"
         counts[kind] += 1
+        dims = comparison_dimensions(a, b)
+        per_key_dimensions.append({"case_id": case_id, "arm": arm,
+                                   "primary_category": kind, **dims})
+        for dimension, value in dims.items():
+            bucket = ("not_applicable" if value is None else
+                      "true" if value is True else
+                      "false" if value is False else value)
+            dimension_totals[dimension][bucket] += 1
         if kind != "exact_agreement":
             details.append({"case_id": case_id, "arm": arm, "category": kind,
                             "left": a, "right": b})
@@ -136,6 +222,9 @@ def compare(left, right):
         "compared_keys": len(set(lmap) | set(rmap)),
         "categories": dict(sorted(counts.items())),
         "disagreements_and_exceptions": details,
+        "per_key_dimensions": per_key_dimensions,
+        "dimension_totals": {key: dict(sorted(totals.items()))
+                             for key, totals in sorted(dimension_totals.items())},
         "external_authority_verified": False,
         "operational_admission": False,
     }
