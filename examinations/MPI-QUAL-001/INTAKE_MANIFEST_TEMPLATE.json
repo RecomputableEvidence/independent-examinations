@@ -1,0 +1,16 @@
+{
+  "schema_version": "0.1",
+  "registration_id": "MPI-QUAL-001",
+  "registration_commit": "537218d2b2434733bf934819e9ae0c2e563750c4",
+  "registration_registry_sha256": "76ec97465c1aff6e7d8c789caab41cc0f22ec852f5ce526ae28a0d8613377025",
+  "candidate_commit": "90b54ee3970d2e1e2520ee8b4b0ea3a6c36b383b",
+  "intake_state": "PREPARATION_ONLY_NOT_RUN",
+  "examiner": {
+    "identity_claim": "UNKNOWN",
+    "platform_claim": "UNKNOWN",
+    "independence_disclosure": "NOT_ESTABLISHED"
+  },
+  "artifacts": [],
+  "model_runs": [],
+  "claim_boundary": "LOCAL_BYTE_INVENTORY_ONLY_NO_AUTHENTICATION_NO_QUALIFICATION_NO_ADMISSION"
+}
