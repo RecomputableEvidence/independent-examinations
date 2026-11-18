@@ -1,6 +1,8 @@
 """Adversarial tests of the two model participation formal gates."""
 
 import copy
+import contextlib
+import io
 import json
 from pathlib import Path
 import sys
@@ -10,7 +12,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 from check_model_participation import (  # noqa: E402
-    ParticipationError, load_record, screen_participation, validate_participation,
+    ParticipationError, declaration_digest_sha256, load_record, main,
+    screen_participation, validate_participation,
 )
 
 
@@ -26,6 +29,12 @@ class ParticipationTests(unittest.TestCase):
         self.assertFalse(result["independent_model_identity_authenticated"])
         self.assertFalse(result["independent_decision_basis_authenticated"])
         self.assertFalse(result["operational_admission"])
+        self.assertEqual(result["subject_sha256"], example()["subject_sha256"])
+        self.assertEqual(result["declared_decision_status"], "WITHHOLD")
+        self.assertEqual(result["identity_evidence_ref"], example()["model_identity"]["evidence_ref"])
+        self.assertEqual(result["schema_version"], "0.1")
+        self.assertEqual(result["checker_version"], "MPI_SCREEN_0.1.1")
+        self.assertEqual(result["declaration_digest_sha256"], declaration_digest_sha256(example()))
 
     def test_continuation_eligible_only_for_further_review(self):
         rec = example()
@@ -43,6 +52,33 @@ class ParticipationTests(unittest.TestCase):
         rec = example()
         rec["model_identity"].update(model_id=None, basis="UNKNOWN", evidence_ref=None)
         self.assertEqual(screen_participation(rec)["disposition"], "NOT_ELIGIBLE_FOR_SCORED_EXAMINATION")
+
+    def test_unknown_provider_padded_is_rejected(self):
+        rec = example()
+        rec["model_identity"]["provider"] = " UNKNOWN "
+        with self.assertRaises(ParticipationError):
+            screen_participation(rec)
+
+    def test_unknown_model_padded_is_rejected(self):
+        rec = example()
+        rec["model_identity"]["model_id"] = " UNKNOWN "
+        with self.assertRaises(ParticipationError):
+            screen_participation(rec)
+
+    def test_unknown_case_variants_are_not_eligible(self):
+        for key in ("provider", "model_id"):
+            for sentinel in ("unknown", "Unknown", "UNKNOWN"):
+                with self.subTest(key=key, sentinel=sentinel):
+                    rec = example()
+                    rec["model_identity"][key] = sentinel
+                    self.assertEqual(screen_participation(rec)["disposition"], "NOT_ELIGIBLE_FOR_SCORED_EXAMINATION")
+
+    def test_real_identifiers_remain_case_sensitive(self):
+        left = example()
+        right = copy.deepcopy(left)
+        right["model_identity"]["model_id"] = left["model_identity"]["model_id"].upper()
+        self.assertNotEqual(screen_participation(left)["declared_model_id"], screen_participation(right)["declared_model_id"])
+        self.assertNotEqual(declaration_digest_sha256(left), declaration_digest_sha256(right))
 
     def test_metadata_without_provenance_reference_fails(self):
         rec = example()
@@ -75,6 +111,22 @@ class ParticipationTests(unittest.TestCase):
         rec["decision"]["decisive_links"] = []
         self.assertIn("INDEPENDENTLY_INSPECTABLE_SUPPORT_MISSING", screen_participation(rec)["invariant_flags"]["MPI_02_decision_path"])
 
+    def test_definitive_decision_requires_limit_account(self):
+        for status in ("CONTINUE", "WITHHOLD", "STOP"):
+            with self.subTest(status=status):
+                rec = example()
+                rec["decision"].update(status=status, counterevidence_or_limits=[])
+                output = screen_participation(rec)
+                self.assertEqual(output["disposition"], "NOT_ELIGIBLE_FOR_SCORED_EXAMINATION")
+                self.assertIn("LIMITATIONS_ACCOUNT_MISSING", output["invariant_flags"]["MPI_02_decision_path"])
+
+    def test_explicit_no_known_limits_statement_is_formally_sufficient(self):
+        rec = example()
+        rec["decision"]["counterevidence_or_limits"] = ["No additional limits identified within stated synthetic case scope"]
+        result = screen_participation(rec)
+        self.assertEqual(result["disposition"], "FORMAL_SCREEN_PASS_PENDING_INDEPENDENT_REVIEW")
+        self.assertFalse(result["independent_decision_basis_authenticated"])
+
     def test_unbound_support_link_fails(self):
         rec = example()
         rec["decision"]["decisive_links"][0]["evidence_ref"] = "uncited-evidence"
@@ -87,6 +139,11 @@ class ParticipationTests(unittest.TestCase):
         result = screen_participation(rec)
         self.assertEqual(result["disposition"], "ABSTENTION_RETAINED_NOT_SCORED")
         self.assertFalse(result["qualified_for_scored_examination"])
+
+    def test_abstention_does_not_need_invented_limitations(self):
+        rec = example()
+        rec["decision"].update(status="ABSTAIN", counterevidence_or_limits=[])
+        self.assertEqual(screen_participation(rec)["disposition"], "ABSTENTION_RETAINED_NOT_SCORED")
 
     def test_unknown_model_abstention_retained(self):
         rec = example()
@@ -111,6 +168,47 @@ class ParticipationTests(unittest.TestCase):
         self.assertNotIn("chain_of_thought", rec["decision"])
         self.assertNotIn("hidden_reasoning", rec["decision"])
         self.assertEqual(screen_participation(rec)["disposition"], "FORMAL_SCREEN_PASS_PENDING_INDEPENDENT_REVIEW")
+
+    def test_material_substitutions_change_bound_report(self):
+        baseline = screen_participation(example())
+        changes = [
+            ("subject_sha256", "", "b" * 64),
+            ("status", "decision", "CONTINUE"),
+            ("evidence_ref", "model_identity", "synthetic:other-metadata"),
+        ]
+        for key, section, value in changes:
+            with self.subTest(key=key):
+                rec = example()
+                (rec if not section else rec[section])[key] = value
+                result = screen_participation(rec)
+                self.assertNotEqual(result, baseline)
+                self.assertNotEqual(result["declaration_digest_sha256"], baseline["declaration_digest_sha256"])
+
+    def test_sorted_parsed_json_digest_differs_from_raw_byte_hash(self):
+        rec = example()
+        first = json.dumps(rec, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        second = json.dumps(rec, indent=2, ensure_ascii=False)
+        self.assertNotEqual(first, second)
+        self.assertEqual(declaration_digest_sha256(json.loads(first)), declaration_digest_sha256(json.loads(second)))
+
+    def test_json_brackets_inside_strings_do_not_count_as_nesting(self):
+        rec = example()
+        rec["decision"]["basis_summary"] = "[" * 500
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sample.json"
+            path.write_text(json.dumps(rec), encoding="utf-8")
+            self.assertEqual(load_record(path)["decision"]["basis_summary"], rec["decision"]["basis_summary"])
+
+    def test_deep_json_is_controlled_invalid_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "deep.json"
+            path.write_text("[" * 50000 + "0" + "]" * 50000, encoding="utf-8")
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                exit_code = main([str(path)])
+            self.assertEqual(exit_code, 2)
+            self.assertIn("nesting depth exceeds limit", err.getvalue())
+            self.assertNotIn("Traceback", err.getvalue())
 
     def test_duplicate_json_keys_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

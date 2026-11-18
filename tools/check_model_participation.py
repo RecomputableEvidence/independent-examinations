@@ -10,12 +10,16 @@ Python 3.10+ standard library only; no examined code is executed.
 """
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
 import sys
 
 MAX_BYTES = 250_000
+MAX_JSON_DEPTH = 64
+CHECKER_VERSION = "MPI_SCREEN_0.1.1"
+DIGEST_PROFILE = "SORTED_SCHEMA_CONSTRAINED_JSON_UTF8_V1"
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 TOP_KEYS = {"schema_version", "experiment_id", "subject_sha256", "case_id", "arm", "run_id", "model_identity", "informedness", "decision"}
 IDENTITY_KEYS = {"provider", "model_id", "version", "basis", "evidence_ref"}
@@ -35,6 +39,26 @@ class ParticipationError(ValueError):
 
 def nonempty(value, limit=512):
     return type(value) is str and bool(value.strip()) and len(value) <= limit
+
+
+def canonical_identity_token(value):
+    """Preserve case-sensitive actual IDs; reject surrounding whitespace."""
+    return value is None or (type(value) is str and value == value.strip())
+
+
+def is_unknown_identity(value):
+    return value is None or (type(value) is str and value.casefold() == "unknown")
+
+
+def declaration_digest_sha256(data):
+    """Hash parsed, sorted JSON; NOT the original input bytes or a custody seal.
+
+    This restricted record contains no JSON numbers, so float serialization
+    cannot introduce cross-runtime representational ambiguity here.
+    """
+    canonical = json.dumps(data, sort_keys=True, separators=(",", ":"),
+                           ensure_ascii=False, allow_nan=False).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def exact_keys(value, keys, label):
@@ -66,9 +90,14 @@ def validate_participation(data):
     exact_keys(decision, DECISION_KEYS, "decision")
     if not nonempty(ident["provider"], 128):
         raise ParticipationError("invalid model provider")
+    if not canonical_identity_token(ident["provider"]):
+        raise ParticipationError("model provider has surrounding whitespace")
     for key in ("model_id", "version", "evidence_ref"):
         if ident[key] is not None and not nonempty(ident[key], 256):
             raise ParticipationError(f"invalid identity {key}")
+    for key in ("model_id", "version"):
+        if not canonical_identity_token(ident[key]):
+            raise ParticipationError(f"identity {key} has surrounding whitespace")
     if type(ident["basis"]) is not str or ident["basis"] not in IDENTITY_BASES:
         raise ParticipationError("invalid identity basis")
 
@@ -105,7 +134,7 @@ def screen_participation(data):
     ident, informed, dec = (data[x] for x in ("model_identity", "informedness", "decision"))
     flags = {"MPI_01_identity": [], "MPI_01_informedness": [], "MPI_02_decision_path": []}
 
-    if ident["provider"] == "UNKNOWN" or ident["model_id"] is None or ident["model_id"] == "UNKNOWN":
+    if is_unknown_identity(ident["provider"]) or is_unknown_identity(ident["model_id"]):
         flags["MPI_01_identity"].append("MODEL_IDENTITY_NOT_DISCLOSED")
     if ident["basis"] in {"SELF_REPORTED", "UNKNOWN"}:
         flags["MPI_01_identity"].append("IDENTITY_UNVERIFIED_SELF_DECLARATION")
@@ -121,6 +150,8 @@ def screen_participation(data):
 
     if dec["ownership"] != "OWN_ASSESSMENT":
         flags["MPI_02_decision_path"].append("OWN_DECISION_NOT_ASSERTED")
+    if dec["status"] in {"CONTINUE", "WITHHOLD", "STOP"} and not dec["counterevidence_or_limits"]:
+        flags["MPI_02_decision_path"].append("LIMITATIONS_ACCOUNT_MISSING")
     if not dec["governing_rule_refs"] or not dec["evidence_refs"] or not dec["decisive_links"]:
         flags["MPI_02_decision_path"].append("INDEPENDENTLY_INSPECTABLE_SUPPORT_MISSING")
     else:
@@ -144,6 +175,13 @@ def screen_participation(data):
         "run_id": data["run_id"],
         "declared_model_id": ident["model_id"],
         "declared_model_provider": ident["provider"],
+        "declared_decision_status": dec["status"],
+        "identity_evidence_ref": ident["evidence_ref"],
+        "subject_sha256": data["subject_sha256"],
+        "schema_version": data["schema_version"],
+        "checker_version": CHECKER_VERSION,
+        "declaration_digest_sha256": declaration_digest_sha256(data),
+        "declaration_digest_profile": DIGEST_PROFILE,
         "disposition": disposition,
         "invariant_flags": flags,
         "independent_model_identity_authenticated": False,
@@ -167,15 +205,43 @@ def _reject_constant(value):
     raise ParticipationError(f"non-JSON numeric constant: {value}")
 
 
+def _check_json_depth(raw):
+    """Check nesting before JSON decoding, ignoring brackets inside strings."""
+    level = 0
+    in_string = False
+    escaped = False
+    for char in raw:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char in "{[":
+            level += 1
+            if level > MAX_JSON_DEPTH:
+                raise ParticipationError("JSON nesting depth exceeds limit")
+        elif char in "}]":
+            level -= 1
+            if level < 0:
+                raise ParticipationError("unbalanced JSON nesting")
+    # The decoder handles unmatched open brackets and unterminated strings.
+
+
 def load_record(path):
     path = Path(path)
     if path.stat().st_size > MAX_BYTES:
         raise ParticipationError("declaration exceeds byte limit")
     try:
-        record = json.loads(path.read_text(encoding="utf-8"),
+        raw = path.read_text(encoding="utf-8")
+        _check_json_depth(raw)
+        record = json.loads(raw,
                             object_pairs_hook=_pairs_no_duplicates,
                             parse_constant=_reject_constant)
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError, RecursionError) as exc:
         raise ParticipationError(f"cannot load declaration: {exc}") from exc
     return validate_participation(record)
 

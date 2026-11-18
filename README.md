@@ -21,6 +21,8 @@ An AI model seeking to contribute a scored judgment must satisfy both [model-par
 
 These are necessary conditions for consideration, not self-certification. Model declarations and references alone do not authenticate a provider/model, establish informedness, or qualify an outcome. The [screening tool](tools/check_model_participation.py) checks completeness and internal consistency; **an independent examiner must authenticate and adjudicate the claims before scored admission**.
 
+Following independent adverse review, the screen revision `MPI_SCREEN_0.1.1` rejects padded/unavailable identity variants, requires explicit limitations for definitive decisions, binds its report to a defined parsed-declaration digest, and handles excessively nested JSON as a controlled invalid record. This amendment is documented in [the review-response ledger](findings/MPI_PR2_REVIEW_RESPONSE_001.md); the original PR-head commit remains in Git history.
+
 ## First registered research candidate
 
 [NGAST-RELATIONAL-CONTINUANCE-COMP-004](experiments/NGAST-RELATIONAL-CONTINUANCE-COMP-004/PREREGISTRATION.md) proposes two **separately examined** work packages:
