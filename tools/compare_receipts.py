@@ -170,8 +170,11 @@ def compare(left, right):
     for key in ("experiment_id", "subject_sha256"):
         if left[key] != right[key]:
             raise ReceiptError(f"incomparable {key}")
-    lmap = {(r["case_id"], r["arm"]): r for r in left["results"]}
-    rmap = {(r["case_id"], r["arm"]): r for r in right["results"]}
+    # v0.1 validated rows contain only immutable str/None values. Copy each
+    # row so a later caller mutation cannot rewrite retained report evidence.
+    # This is not an atomic snapshot against concurrent mutation during compare.
+    lmap = {(r["case_id"], r["arm"]): dict(r) for r in left["results"]}
+    rmap = {(r["case_id"], r["arm"]): dict(r) for r in right["results"]}
     counts = Counter()
     details = []
     per_key_dimensions = []
