@@ -1,0 +1,27 @@
+{
+  "registration_id": "MPI-QUAL-001",
+  "registration_version": "0.1",
+  "registration_state": "DESIGN_ONLY_NOT_RUN",
+  "candidate_pr": 2,
+  "candidate_commit": "90b54ee3970d2e1e2520ee8b4b0ea3a6c36b383b",
+  "candidate_checker_blob": "382c92b7452b836cdcdb8154cf249bbf712a40a2",
+  "examiner_metadata_authenticated": false,
+  "participating_models_authenticated": false,
+  "case_truth_independently_established": false,
+  "qualified_for_scored_examination": false,
+  "operational_admission": false,
+  "cases": [
+    {"id": "I01", "family": "identity", "control": "positive", "challenge": "Exactly bound provider/executor model metadata", "expected_gate": "PENDING_INDEPENDENT_REVIEW"},
+    {"id": "I02", "family": "identity", "control": "withheld", "challenge": "No independently disclosed model identifier", "expected_gate": "RETAIN_NOT_SCORED"},
+    {"id": "I03", "family": "identity", "control": "adverse", "challenge": "Self-declared model identity only", "expected_gate": "RETAIN_NOT_SCORED"},
+    {"id": "I04", "family": "identity", "control": "adverse", "challenge": "Claimed model conflicts with executor metadata", "expected_gate": "NOT_QUALIFIED"},
+    {"id": "I05", "family": "identity", "control": "adverse", "challenge": "Valid-looking metadata from a different run", "expected_gate": "NOT_QUALIFIED"},
+    {"id": "I06", "family": "identity", "control": "adverse", "challenge": "Rehashed but unresolved provenance reference", "expected_gate": "NOT_QUALIFIED"},
+    {"id": "D01", "family": "decision", "control": "positive", "challenge": "Currently authorized continuance with independently evidenced support", "expected_gate": "PENDING_INDEPENDENT_REVIEW"},
+    {"id": "D02", "family": "decision", "control": "adverse", "challenge": "Unsupported CONTINUE despite a favorable-looking explanation", "expected_gate": "NOT_QUALIFIED"},
+    {"id": "D03", "family": "decision", "control": "adverse", "challenge": "Leaked reference answer repeated without decisive support", "expected_gate": "NOT_QUALIFIED"},
+    {"id": "D04", "family": "decision", "control": "adverse", "challenge": "Previously valid authority revoked before decision", "expected_gate": "NOT_QUALIFIED_IF_CONTINUED"},
+    {"id": "D05", "family": "decision", "control": "positive", "challenge": "Changed governing evidence justifies a versioned decision correction", "expected_gate": "PENDING_INDEPENDENT_REVIEW"},
+    {"id": "D06", "family": "decision", "control": "withheld", "challenge": "Current evidence absent and uncertainty honestly disclosed", "expected_gate": "RETAIN_NOT_SCORED"}
+  ]
+}
