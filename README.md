@@ -25,6 +25,8 @@ Following independent adverse review, the screen revision `MPI_SCREEN_0.1.1` rej
 
 The subsequent candidate `MPI_SCREEN_0.1.2` rejects unpaired Unicode surrogates before UTF-8 digest encoding, rejects JSON numbers before numeric conversion, and uses the exact ineligible disposition wire value in the protocol. Its repair account is [review-response ledger 002](findings/MPI_PR2_REVIEW_RESPONSE_002.md). Both preceding commits and independent findings are preserved; independent acceptance remains pending.
 
+Proposed bounded successor `MPI_SCREEN_0.1.3` responds to two additional local examination findings: an adversarial non-JSON direct-call schema-version object and oversized bytes supplied through a POSIX FIFO. It requires an exact string schema version, accepts regular files only, and enforces the byte cap on bytes actually read. Valid declaration digests and screening dispositions remain unchanged; the reported checker version intentionally advances. See [input-boundary repair 003](findings/MPI_PR2_INPUT_BOUNDARY_REPAIR_003.md). This successor does **not** authenticate model identity, qualify an examiner, or grant admission.
+
 ## First registered research candidate
 
 [NGAST-RELATIONAL-CONTINUANCE-COMP-004](experiments/NGAST-RELATIONAL-CONTINUANCE-COMP-004/PREREGISTRATION.md) proposes two **separately examined** work packages:
