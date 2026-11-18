@@ -1,0 +1,15 @@
+{
+  "schema_version": "0.1",
+  "experiment_id": "NEUTRAL-COMPARATOR-DEMO-001",
+  "subject_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "implementation_id": "synthetic-left",
+  "platform_id": "local-demo-1",
+  "results": [
+    {"case_id": "S01", "arm": "A", "cohort": "registered", "status": "CONTINUE", "reason": "SUPPORTED_SYNTHETIC_CONTROL", "exception": null},
+    {"case_id": "S02", "arm": "D", "cohort": "registered", "status": "WITHHOLD", "reason": "MALFORMED_INPUT", "exception": null},
+    {"case_id": "S03", "arm": "C", "cohort": "registered", "status": "WITHHOLD", "reason": "TYPE_INVALID", "exception": null},
+    {"case_id": "S04", "arm": "D", "cohort": "exploratory", "status": "WITHHOLD", "reason": "MALFORMED_INPUT", "exception": null},
+    {"case_id": "S05", "arm": "D", "cohort": "exploratory", "status": "CONTINUE", "reason": "SUPPORTED_SYNTHETIC_CONTROL", "exception": null},
+    {"case_id": "S06", "arm": "A", "cohort": "registered", "status": "STOP", "reason": "REVOKED", "exception": null}
+  ]
+}
